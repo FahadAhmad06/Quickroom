@@ -1,5 +1,22 @@
 import load from './load';
 
+function responseHeader(headers, name) {
+  if (!headers) return '';
+  if (typeof headers.get === 'function') {
+    const value = headers.get(name);
+    return typeof value === 'string' ? value : value == null ? '' : String(value);
+  }
+  if (typeof headers === 'object') {
+    const lowerName = name.toLowerCase();
+    for (const [key, value] of headers.entries ? headers.entries() : Object.entries(headers)) {
+      if (String(key).toLowerCase() === lowerName) {
+        return typeof value === 'string' ? value : value == null ? '' : String(value);
+      }
+    }
+  }
+  return '';
+}
+
 // Download a PDF (or any binary) from the deployed API, not from the client origin.
 // Shared by every PDF button — student, teacher and owner.
 export default async function downloadFile(path, filename, storeKey = 'qr_admin') {
@@ -31,7 +48,7 @@ export default async function downloadFile(path, filename, storeKey = 'qr_admin'
     throw new Error(message);
   }
 
-  const contentType = (res.headers.get('content-type') || '').toLower();
+  const contentType = responseHeader(res.headers, 'content-type').toLowerCase();
   if (!contentType.includes('application/pdf')) {
     throw new Error('The server did not return a PDF. Please try again.');
   }
