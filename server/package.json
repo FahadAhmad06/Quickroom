@@ -10,6 +10,7 @@
     "test:ownership": "node --test test/ownership.test.js",
     "test:rbac": "node --test test/rbac.test.js",
     "test:pdf": "node --test test/pdfReport.test.js",
+    "test:change-password": "node --test test/changePassword.test.js",
     "test:all": "node --test --test-concurrency=1 test/evaluation.test.js test/groqEvaluator.test.js test/aiEvaluatorGroq.test.js test/aiEvaluatorInvalidProvider.test.js test/aiFallback.test.js test/aiFallbackDisabled.test.js && node --test test/ownership.test.js && node --test test/rbac.test.js && node --test test/pdfReport.test.js",
     "migrate": "node scripts/migrateOwnership.js",
     "migrate:dry": "node scripts/migrateOwnership.js --dry-run",

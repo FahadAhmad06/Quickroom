@@ -17,6 +17,7 @@ import adminRetakeRoutes from './routes/adminRetakeRoutes.js';
 import adminSubjectiveRoutes from './routes/adminSubjectiveRoutes.js';
 import studentAuthRoutes from './routes/studentAuthRoutes.js';
 import attachStudent from './middleware/attachStudent.js';
+import teacherAuthRoutes from './routes/teacherAuthRoutes.js';
 import { studentReportRouter, adminReportRouter, ownerReportRouter } from './routes/reportRoutes.js';
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/students', studentAuthRoutes);                              // POS
 app.use('/api', attachStudent, publicRoutes);                             // public quiz routes
 app.use('/api', attachStudent, studentReportRouter);                      // GET /me/reports (student PDF)
 app.use('/api/admin', adminAuthRoutes);                                   // POST /login
+app.use('/api/admin/teachers', requireAdmin, teacherAuthRoutes);           // teacher-only account routes
 app.use('/api/admin/admins', requireAdmin, requireOwner, adminAdminRoutes); // owner only
 app.use('/api/admin/reports', requireAdmin, adminReportRouter);           // admin PDF reports
 app.use('/api/admin/admins-reports', requireAdmin, requireOwner, ownerReportRouter); // owner PDF reports

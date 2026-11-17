@@ -7,7 +7,11 @@ export default async function api(path, { method = 'GET', body, signal, cache } 
   const s = load(key, null, sessionStorage);
   let res;
   try {
-    res = await fetch((import.meta.env.VITE_API_URL || '') + '/api' + path, {
+    const configuredUrl = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+    const apiRoot = configuredUrl
+      ? (configuredUrl.endsWith('/api') ? configuredUrl : configuredUrl + '/api')
+      : '/api';
+    res = await fetch(apiRoot + (path.startsWith('/') ? path : '/' + path), {
       method,
       headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(s?.token ? { Authorization: 'Bearer ' + s.token } : {}) },
       body: body ? JSON.stringify(body) : undefined, signal, cache

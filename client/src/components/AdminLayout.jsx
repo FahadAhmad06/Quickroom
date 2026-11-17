@@ -88,6 +88,7 @@ export default function AdminLayout({ theme, onToggleTheme }) {
               <div className="popover right" role="menu">
                 <div className="empty-row" style={{ paddingBottom: 6 }}><b style={{ color: 'var(--ink)' }}>{s?.email}</b><br />{s?.isSuper ? 'Owner' : 'Administrator'}</div>
                 <Link to="/admin/settings" role="menuitem"><Icon name="settings" size={16} />Account settings</Link>
+                {!s?.isSuper && <Link to="/admin/change-password" role="menuitem"><Icon name="key" size={16} />Change password</Link>}
                 <button className="item" role="menuitem" onClick={logout}><Icon name="logout" size={16} />Log out</button>
               </div>
             )}

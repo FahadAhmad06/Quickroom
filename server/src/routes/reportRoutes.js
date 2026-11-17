@@ -38,11 +38,18 @@ import displayName from '../utils/displayName.js';
 
 /** Stream a PDF buffer to the response. */
 function sendPdf(res, buf, filename) {
+  if (!Buffer.isBuffer(buf) || buf.length < 5 || buf.subarray(0, 5).toString('ascii') !== '%PDF-') {
+    throw httpError(500, 'PDF generation failed. No valid PDF was produced.');
+  }
+  const safeFilename = String(filename || 'report.pdf')
+    .replace(/["\r\n]/g, '')
+    .replace(/[^\w.\- ()]/g, '_') || 'report.pdf';
   res.set({
     'Content-Type':        'application/pdf',
-    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Disposition': `attachment; filename="${safeFilename}"`,
     'Content-Length':      buf.length,
-    'Cache-Control':       'no-store'
+    'Cache-Control':       'no-store, no-cache, must-revalidate',
+    'X-Content-Type-Options': 'nosniff'
   });
   res.end(buf);
 }

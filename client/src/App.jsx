@@ -36,6 +36,7 @@ import AdminReports from './pages/admin/AdminReports';
 import Teachers from './pages/admin/Teachers';
 import TeacherProfile from './pages/admin/TeacherProfile';
 import StudentProfile from './pages/admin/StudentProfile';
+import ChangePassword from './pages/admin/ChangePassword';
 
 function Shell() {
   const [theme, toggleTheme] = useTheme();
@@ -76,6 +77,7 @@ function Shell() {
           <Route path="subjective/:attemptId" element={<SubjectiveReview />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="change-password" element={<ChangePassword />} />
           <Route path="admins" element={<Navigate to="/admin/settings" replace />} />
         </Route>
         <Route path="*" element={<NotFound />} />

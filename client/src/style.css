@@ -555,6 +555,27 @@ tbody tr:hover{background:var(--bg2)}
 .pwrap .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:none;border:0;padding:0;color:var(--muted);box-shadow:none}
 .pwrap .eye:hover{color:var(--ink);box-shadow:none}
 .pwrap .eye:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+.change-password-wrap{display:flex;justify-content:center;width:100%;padding:var(--sp-2) 0 var(--sp-6)}
+.change-password-card{width:100%;max-width:560px;margin:0}
+.change-password-intro{margin:0 0 var(--sp-4)}
+.change-password-card label.field{margin-bottom:6px}
+.change-password-card .pwrap{margin-bottom:10px}
+.change-password-card .field-error{margin:-2px 0 var(--sp-3);font-size:13px}
+.password-requirements{margin:-2px 0 var(--sp-4);padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2)}
+.password-requirements b{display:block;font-size:13px;color:var(--ink);margin-bottom:8px}
+.password-requirements ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.password-requirements li{display:flex;align-items:center;gap:8px;font-size:13px}
+.password-requirements li.met{color:var(--ok-line)}
+.password-requirements li.unmet{color:var(--muted)}
+.requirement-icon{width:18px;height:18px;display:inline-grid;place-items:center;border-radius:50%;border:1px solid currentColor;font-size:12px;font-weight:800;flex:none}
+.change-password-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:var(--sp-3);flex-wrap:wrap}
+@media (max-width:560px){
+  .change-password-wrap{display:block;padding:0 0 var(--sp-4)}
+  .change-password-card{max-width:none}
+  .change-password-actions{width:100%}
+  .change-password-actions button{flex:1 1 0;min-height:44px}
+  .change-password-card input{min-height:44px}
+}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px}
 .kv dt{color:var(--muted)}.kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
 

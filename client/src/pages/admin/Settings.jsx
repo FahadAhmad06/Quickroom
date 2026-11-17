@@ -19,7 +19,10 @@ export default function Settings() {
           <dt>Role</dt><dd>{s?.isSuper ? 'Owner' : 'Administrator'}</dd>
           <dt>Session</dt><dd>Ends when you log out or close this tab</dd>
         </dl>
-        <button className="ghost" style={{ marginTop: 16 }} onClick={logout}><Icon name="logout" size={16} />Log out</button>
+        <div className="row" style={{ marginTop: 16 }}>
+          {!s?.isSuper && <button className="outline" onClick={() => navigate('/admin/change-password')}><Icon name="key" size={16} />Change password</button>}
+          <button className="ghost" onClick={logout}><Icon name="logout" size={16} />Log out</button>
+        </div>
       </div>
       <div className="card" style={{ margin: 0 }}>
         <div className="card-head"><h2><span className="hicon"><Icon name={theme === 'dark' ? 'moon' : 'sun'} size={16} /></span>Appearance</h2></div>

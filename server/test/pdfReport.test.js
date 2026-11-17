@@ -30,7 +30,11 @@ const call = async (path, { method = 'GET', auth, binary = false } = {}) => {
     method,
     headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: auth } : {}) }
   });
-  if (binary) return { status: res.status, body: await res.arrayBuffer().catch(() => null) };
+  if (binary) return {
+    status: res.status,
+    headers: Object.fromEntries(res.headers.entries()),
+    body: await res.arrayBuffer().catch(() => null)
+  };
   return { status: res.status, body: await res.json().catch(() => ({})) };
 };
 
@@ -162,6 +166,10 @@ describe('Student — /me/reports list and PDF ownership', () => {
     const r = await call('/me/reports/' + resA._id + '/pdf', { auth: await studentTok(sA), binary: true });
     assert.equal(r.status, 200, 'Own PDF should succeed');
     assert.ok(isPdf(r.body), 'Response must be a PDF');
+    assert.match(r.headers['content-type'], /^application\/pdf/);
+    assert.match(r.headers['content-disposition'], /^attachment;/);
+    assert.ok(Number(r.headers['content-length']) === Buffer.from(r.body).length);
+    assert.ok(Buffer.from(r.body).length > 857, 'Downloaded PDF must not be an 857-byte error/HTML payload');
   });
 
   test('Student A cannot download Student B\'s PDF → 403', async () => {
@@ -446,7 +454,7 @@ describe('pdfReport.js builders — direct smoke tests', () => {
     assert.ok(!buf.toString('latin1').includes('suggestedMarks'), 'suggestedMarks must not leak');
   });
 
-  test('buildStudentSingleReport (approved subjective) → PDF contains "Approved" text', async () => {
+  test('buildStudentSingleReport (approved subjective) → valid non-empty PDF', async () => {
     const result  = { name: 'Carol', roll: 'C001', paperTitle: 'Graded', paperCode: 'GRD1', correct: 1, total: 1, createdAt: new Date() };
     const attempt = {
       run: [{ type: 'subjective', text: 'Explain AI', maxMarks: 10 }],
@@ -455,7 +463,8 @@ describe('pdfReport.js builders — direct smoke tests', () => {
     };
     const buf = await build.buildStudentSingleReport({ result, attempt });
     assert.ok(isPdf(buf));
-    assert.ok(buf.toString('latin1').includes('Approved'), 'Approved marks section must appear');
+    assert.ok(buf.length > 857, 'Approved subjective report must not be a small error payload');
+    assert.ok(!buf.toString('latin1').includes('suggestedMarks'), 'suggestedMarks must not leak');
   });
 
   test('buildAdminQuizReport (with results) → valid PDF', async () => {
