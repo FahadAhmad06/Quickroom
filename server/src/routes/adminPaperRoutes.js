@@ -124,6 +124,12 @@ r.patch('/papers/:id', asyncHandler(async (req, res) => {
   }
   const title = String(b.title || '').trim(), perQ = Number(b.perQ), timingMode = b.timingMode === 'customTotal' ? 'customTotal' : 'perQuestion';
   const customDuration = timingMode === 'customTotal' ? Number(b.customDuration) : 0;
+  const tabSwitchLimitEnabled = b.tabSwitchLimitEnabled === true;
+  const tabSwitchLimitValue = Number(b.tabSwitchLimit);
+  if (tabSwitchLimitEnabled && (!Number.isInteger(tabSwitchLimitValue) || tabSwitchLimitValue < 0)) {
+    throw httpError(400, 'Tab-switch limit must be a non-negative integer.');
+  }
+  const tabSwitchLimit = tabSwitchLimitEnabled ? tabSwitchLimitValue : 0;
   if (!title || title.length > 120) throw httpError(400, 'Give the paper a title (up to 120 characters).');
   if (!Number.isFinite(perQ) || perQ < 0 || perQ > 3600) throw httpError(400, 'Time per question must be from 0 to 60 minutes.');
   if (timingMode === 'customTotal' && (!Number.isFinite(customDuration) || customDuration <= 0 || customDuration > 86400 * 365)) throw httpError(400, 'Custom duration must be a positive value up to one year.');
@@ -131,6 +137,8 @@ r.patch('/papers/:id', asyncHandler(async (req, res) => {
   if (qErr) throw httpError(400, qErr);
   const shuffleSettings = normalizeShuffleSettings(b);
   p.title = title; p.perQ = Math.round(perQ); p.timingMode = timingMode; p.customDuration = timingMode === 'customTotal' ? Math.round(customDuration) : 0;
+  p.tabSwitchLimitEnabled = tabSwitchLimitEnabled;
+  p.tabSwitchLimit = tabSwitchLimit;
   p.shuffleQuestions = shuffleSettings.shuffleQuestions;
   p.shuffleOptions = shuffleSettings.shuffleOptions;
   p.shuffle = shuffleSettings.shuffleQuestions || shuffleSettings.shuffleOptions;
@@ -159,6 +167,12 @@ r.post('/papers', asyncHandler(async (req, res) => {
   const b = req.body || {}, title = String(b.title || '').trim();
   const perQ = Number(b.perQ), dur = b.durationMs == null ? null : Number(b.durationMs), timingMode = b.timingMode === 'customTotal' ? 'customTotal' : 'perQuestion';
   const customDuration = timingMode === 'customTotal' ? Number(b.customDuration) : 0;
+  const tabSwitchLimitEnabled = b.tabSwitchLimitEnabled === true;
+  const tabSwitchLimitValue = Number(b.tabSwitchLimit);
+  if (tabSwitchLimitEnabled && (!Number.isInteger(tabSwitchLimitValue) || tabSwitchLimitValue < 0)) {
+    throw httpError(400, 'Tab-switch limit must be a non-negative integer.');
+  }
+  const tabSwitchLimit = tabSwitchLimitEnabled ? tabSwitchLimitValue : 0;
   if (!title || title.length > 120) throw httpError(400, 'Give the paper a title (up to 120 characters).');
   if (!Number.isFinite(perQ) || perQ < 0 || perQ > 3600) throw httpError(400, 'Time per question must be from 0 to 60 minutes.');
   if (timingMode === 'customTotal' && (!Number.isFinite(customDuration) || customDuration <= 0 || customDuration > 86400 * 365)) throw httpError(400, 'Custom duration must be a positive value up to one year.');
@@ -170,6 +184,7 @@ r.post('/papers', asyncHandler(async (req, res) => {
   const shuffleSettings = normalizeShuffleSettings(b);
   const paper = await Paper.create({
     code: await generateCode(), title, perQ: Math.round(perQ), timingMode, customDuration: timingMode === 'customTotal' ? Math.round(customDuration) : 0,
+    tabSwitchLimitEnabled, tabSwitchLimit,
     shuffleQuestions: shuffleSettings.shuffleQuestions,
     shuffleOptions: shuffleSettings.shuffleOptions,
     shuffle: shuffleSettings.shuffleQuestions || shuffleSettings.shuffleOptions,

@@ -97,7 +97,7 @@ export default function SuspendedExams() {
               <tr key={a._id}>
                 <td><b>{a.studentName}</b><div className="muted small-text">{a.studentEmail}</div></td>
                 <td className="wrap"><b>{a.paperTitle}</b><div className="muted small-text">{a.paperCode}</div></td>
-                <td><span className="badge warn"><Icon name="alert" size={15} /> {a.tabSwitchCount || 0}/3</span></td>
+                <td><span className="badge warn"><Icon name="alert" size={15} /> {a.tabSwitchCount || 0}/{a.tabSwitchLimitEnabled ? (a.tabSwitchLimit + 1) : 'disabled'}</span></td>
                 <td>{new Date(a.suspendedAt).toLocaleString()}</td>
                 <td className="wrap" style={{ maxWidth: 260 }}>{a.suspensionReason}</td>
                 <td>{Math.max(0, Math.ceil((a.remainingTime || 0) / 60000))} min</td>

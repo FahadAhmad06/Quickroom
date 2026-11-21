@@ -66,9 +66,9 @@ async function createAdmin(email, password = 'password123') {
   return { admin: a, token: adminToken(email, String(a._id)) };
 }
 
-async function createPaper(adminId, adminToken, { title = 'Test Paper', questions } = {}) {
+async function createPaper(adminId, adminToken, { title = 'Test Paper', questions, tabSwitchLimitEnabled = false, tabSwitchLimit = 0 } = {}) {
   const q = questions || [{ type: 'mcq', text: 'Q1', options: ['A', 'B'], correct: 0 }];
-  const res = await call('/admin/papers', { method: 'POST', auth: adminToken, body: { title, perQ: 0, questions: q } });
+  const res = await call('/admin/papers', { method: 'POST', auth: adminToken, body: { title, perQ: 0, tabSwitchLimitEnabled, tabSwitchLimit, questions: q } });
   assert.equal(res.status, 201, 'createPaper failed: ' + JSON.stringify(res.body));
   return res.body;
 }
@@ -422,5 +422,86 @@ describe('Client-supplied adminId cannot bypass ownership', () => {
     })();
     const res = await call('/admin/papers/' + paperA._id, { auth: fakeToken });
     assert.equal(res.status, 401, 'Forged token must be rejected with 401');
+  });
+});
+
+describe('Configurable tab-switch protection', () => {
+  let admin, student, paperByLimit;
+
+  test('New quizzes default to disabled tab-switch protection', async () => {
+    admin = await createAdmin('tabswitch-admin@test.local');
+    const paper = await createPaper(null, admin.token, { title: 'Disabled switches' });
+    assert.equal(paper.tabSwitchLimitEnabled, false);
+    assert.equal(paper.tabSwitchLimit, 0);
+  });
+
+  test('Limit 0 locks on the first switch and resume preserves the count', async () => {
+    const paper = await createPaper(null, admin.token, { title: 'Limit zero', tabSwitchLimitEnabled: true, tabSwitchLimit: 0 });
+    await call('/admin/papers/' + paper._id + '/reopen', { method: 'POST', auth: admin.token, body: { ms: 86400000 } });
+    const roll = await createRoll(admin.token, 'TABSROLL0');
+    student = await registerAndLoginStudent('TABSROLL0', roll.pin);
+    const start = await call('/papers/' + paper.code + '/start', { method: 'POST', auth: student.token });
+    assert.equal(start.status, 200);
+    assert.equal(start.body.tabSwitchLimitEnabled, true);
+    assert.equal(start.body.tabSwitchLimit, 0);
+    const first = await call('/attempts/' + start.body.attemptId + '/violation', { method: 'POST', auth: student.token, body: { tabSwitchLimit: 99, tabSwitchCount: -10 } });
+    assert.equal(first.status, 200);
+    assert.equal(first.body.tabSwitchCount, 1);
+    assert.equal(first.body.examStatus, 'suspended');
+    const refresh = await call('/attempts/' + start.body.attemptId, { auth: student.token });
+    assert.equal(refresh.body.examStatus, 'suspended');
+    assert.equal(refresh.body.tabSwitchCount, 1);
+    const resumed = await call('/admin/attempts/' + start.body.attemptId + '/resume', { method: 'POST', auth: admin.token });
+    assert.equal(resumed.status, 200);
+    assert.equal(resumed.body.examStatus, 'in_progress');
+    const attempt = await Attempt.findById(start.body.attemptId).lean();
+    assert.equal(attempt.tabSwitchCount, 1, 'Resume must not reset or rewrite the switch count');
+  });
+
+  test('Disabled protection does not count switches or lock', async () => {
+    const paper = await createPaper(null, admin.token, { title: 'No switch protection', tabSwitchLimitEnabled: false, tabSwitchLimit: 3 });
+    await call('/admin/papers/' + paper._id + '/reopen', { method: 'POST', auth: admin.token, body: { ms: 86400000 } });
+    const roll = await createRoll(admin.token, 'TABSROLLOFF');
+    const st = await registerAndLoginStudent('TABSROLLOFF', roll.pin);
+    const start = await call('/papers/' + paper.code + '/start', { method: 'POST', auth: st.token });
+    for (let i = 0; i < 5; i++) {
+      const v = await call('/attempts/' + start.body.attemptId + '/violation', { method: 'POST', auth: st.token });
+      assert.equal(v.status, 200);
+      assert.equal(v.body.examStatus, 'in_progress');
+      assert.equal(v.body.tabSwitchCount, 0);
+    }
+  });
+
+  test('Limit 1 locks on the second switch and limit 3 locks on the fourth', async () => {
+    for (const [limit, rollNumber, lockCount] of [[1, 'TABSLIMIT1', 2], [3, 'TABSLIMIT3', 4]]) {
+      paperByLimit = await createPaper(null, admin.token, { title: 'Limit ' + limit, tabSwitchLimitEnabled: true, tabSwitchLimit: limit });
+      await call('/admin/papers/' + paperByLimit._id + '/reopen', { method: 'POST', auth: admin.token, body: { ms: 86400000 } });
+      const roll = await createRoll(admin.token, rollNumber);
+      const st = await registerAndLoginStudent(rollNumber, roll.pin);
+      const start = await call('/papers/' + paperByLimit.code + '/start', { method: 'POST', auth: st.token });
+      let last;
+      for (let i = 1; i <= lockCount; i++) {
+        last = await call('/attempts/' + start.body.attemptId + '/violation', { method: 'POST', auth: st.token });
+        assert.equal(last.status, i === lockCount ? 200 : 200);
+      }
+      assert.equal(last.body.tabSwitchCount, lockCount);
+      assert.equal(last.body.examStatus, 'suspended');
+      const dbAttempt = await Attempt.findById(start.body.attemptId).lean();
+      assert.equal(dbAttempt.tabSwitchLimitEnabled, true);
+      assert.equal(dbAttempt.tabSwitchLimit, limit);
+    }
+  });
+
+  test('Invalid student payload cannot change an attempt limit or count', async () => {
+    const paper = await createPaper(null, admin.token, { title: 'Manipulation test', tabSwitchLimitEnabled: true, tabSwitchLimit: 5 });
+    await call('/admin/papers/' + paper._id + '/reopen', { method: 'POST', auth: admin.token, body: { ms: 86400000 } });
+    const roll = await createRoll(admin.token, 'TABSMANIP');
+    const st = await registerAndLoginStudent('TABSMANIP', roll.pin);
+    const start = await call('/papers/' + paper.code + '/start', { method: 'POST', auth: st.token });
+    await call('/attempts/' + start.body.attemptId + '/violation', { method: 'POST', auth: st.token, body: { tabSwitchCount: 0, tabSwitchLimit: 0, tabSwitchLimitEnabled: false } });
+    const dbAttempt = await Attempt.findById(start.body.attemptId).lean();
+    assert.equal(dbAttempt.tabSwitchCount, 1);
+    assert.equal(dbAttempt.tabSwitchLimit, 5);
+    assert.equal(dbAttempt.tabSwitchLimitEnabled, true);
   });
 });

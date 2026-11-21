@@ -31,7 +31,11 @@ function assertOwns(attempt, req) {
 
 r.get('/papers/:code', asyncHandler(async (req, res) => {
   const p = await openPaper(req.params.code);
-  res.json({ code: p.code, title: p.title, perQ: p.perQ, timingMode: p.timingMode || 'perQuestion', customDuration: p.customDuration || 0, count: p.questions.length, startsAt: p.startsAt, expiresAt: p.expiresAt });
+  const tabSwitchLimitEnabled = typeof p.tabSwitchLimitEnabled === 'boolean' ? p.tabSwitchLimitEnabled : true;
+  const tabSwitchLimit = tabSwitchLimitEnabled
+    ? (Number.isInteger(p.tabSwitchLimit) && p.tabSwitchLimit >= 0 ? p.tabSwitchLimit : 3)
+    : 0;
+  res.json({ code: p.code, title: p.title, perQ: p.perQ, timingMode: p.timingMode || 'perQuestion', customDuration: p.customDuration || 0, tabSwitchLimitEnabled, tabSwitchLimit, count: p.questions.length, startsAt: p.startsAt, expiresAt: p.expiresAt });
 }));
 
 r.post('/papers/:code/start', asyncHandler(async (req, res) => {
@@ -88,6 +92,14 @@ r.post('/attempts/:id/violation', asyncHandler(async (req, res) => {
   if (a.examStatus === 'suspended') throw httpError(403, 'This examination is suspended. A teacher or owner must approve resume before continuing.');
   if (a.qEnd && Date.now() >= a.qEnd.getTime()) throw httpError(409, 'This exam deadline has already expired.');
 
+  const enabled = typeof a.tabSwitchLimitEnabled === 'boolean' ? a.tabSwitchLimitEnabled : true;
+  const limit = enabled
+    ? (Number.isInteger(a.tabSwitchLimit) && a.tabSwitchLimit >= 0 ? a.tabSwitchLimit : 3)
+    : 0;
+  if (!enabled) {
+    return res.json({ ok: true, tabSwitchCount: a.tabSwitchCount || 0, examStatus: 'in_progress', suspensionReason: null, alert: null });
+  }
+
   const history = a.violationHistory || [];
   const last = history[history.length - 1];
   if (last && last.source === 'tab_switch' && Date.now() - new Date(last.at).getTime() < 2000) {
@@ -97,10 +109,10 @@ r.post('/attempts/:id/violation', asyncHandler(async (req, res) => {
   const count = (a.tabSwitchCount || 0) + 1;
   const base = {
     tabSwitchCount: count,
-    violationHistory: [...history, { at: new Date(), count, reason: count >= 3 ? 'Tab switch limit reached' : 'Tab switch violation', source: 'tab_switch' }]
+    violationHistory: [...history, { at: new Date(), count, reason: count > limit ? 'Tab switch limit reached' : 'Tab switch violation', source: 'tab_switch' }]
   };
 
-  if (count >= 3) {
+  if (count > limit) {
     Object.assign(base, {
       examStatus: 'suspended',
       suspendedAt: new Date(),
@@ -109,7 +121,8 @@ r.post('/attempts/:id/violation', asyncHandler(async (req, res) => {
   }
 
   const saved = await Attempt.findOneAndUpdate({ _id: a._id, submitted: false }, base, { new: true });
-  res.json({ ok: true, tabSwitchCount: saved.tabSwitchCount || 0, examStatus: saved.examStatus || 'in_progress', suspensionReason: saved.suspensionReason || null, alert: count >= 3 ? 'suspended' : count === 2 ? 'final_warning' : 'warning' });
+  const alert = count > limit ? 'suspended' : (limit > 0 && count >= limit ? 'final_warning' : 'warning');
+  res.json({ ok: true, tabSwitchCount: saved.tabSwitchCount || 0, examStatus: saved.examStatus || 'in_progress', suspensionReason: saved.suspensionReason || null, alert });
 }));
 
 r.get('/me/overview', asyncHandler(async (req, res) => {
@@ -147,7 +160,7 @@ r.get('/attempts/:id', asyncHandler(async (req, res) => {
 // Strict sequential navigation: a.idx is the only question that can be answered. Everything
 // before it is locked (answered or skipped), everything after it is unreachable until Next.
 // Requests naming any other index are rejected with the authoritative state so the client resyncs.
-const progress = a => ({ idx: a.idx, qEnd: a.qEnd, startedAt: a.startedAt, answers: a.answers, subjectiveText: a.subjectiveText || [], serverNow: Date.now(), examStatus: a.examStatus || 'in_progress', tabSwitchCount: a.tabSwitchCount || 0, suspensionReason: a.suspensionReason || null });
+const progress = a => ({ idx: a.idx, qEnd: a.qEnd, startedAt: a.startedAt, answers: a.answers, subjectiveText: a.subjectiveText || [], serverNow: Date.now(), examStatus: a.examStatus || 'in_progress', tabSwitchCount: a.tabSwitchCount || 0, tabSwitchLimitEnabled: typeof a.tabSwitchLimitEnabled === 'boolean' ? a.tabSwitchLimitEnabled : true, tabSwitchLimit: Number.isInteger(a.tabSwitchLimit) && a.tabSwitchLimit >= 0 ? a.tabSwitchLimit : 3, suspensionReason: a.suspensionReason || null });
 async function openAttempt(req) {
   const now = new Date();
   const expired = await Attempt.findOne({ _id: req.params.id, submitted: false, qEnd: { $ne: null, $lte: now } });

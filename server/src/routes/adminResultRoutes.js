@@ -103,6 +103,8 @@ r.get('/suspended', asyncHandler(async (req, res) => {
       paperTitle: a.paperTitle,
       paperCode: a.paperCode,
       tabSwitchCount: a.tabSwitchCount || 0,
+      tabSwitchLimitEnabled: typeof a.tabSwitchLimitEnabled === 'boolean' ? a.tabSwitchLimitEnabled : true,
+      tabSwitchLimit: Number.isInteger(a.tabSwitchLimit) && a.tabSwitchLimit >= 0 ? a.tabSwitchLimit : 3,
       suspendedAt: a.suspendedAt,
       suspensionReason: a.suspensionReason || 'Tab switch limit reached',
       examStatus: a.examStatus || 'suspended',
@@ -137,7 +139,6 @@ r.post('/attempts/:id/resume', asyncHandler(async (req, res) => {
   a.resumedBy = req.admin.isSuper ? null : req.admin.adminId;
   a.suspensionReason = null;
   a.suspendedAt = null;
-  a.tabSwitchCount = Math.max(a.tabSwitchCount || 0, 3);
   await a.save();
   res.json({ ok: true, examStatus: 'in_progress', attemptId: a._id, qEnd: a.qEnd });
 }));

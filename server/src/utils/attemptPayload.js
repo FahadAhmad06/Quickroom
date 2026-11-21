@@ -6,6 +6,15 @@ export default function attemptPayload(attempt, paper) {
   return {
     attemptId: a._id, perQ: paper.perQ ?? a.perQ ?? 0, timingMode: a.timingMode || paper.timingMode || 'perQuestion',
     customDuration: a.customDuration ?? paper.customDuration ?? 0, preview: a.preview,
+    tabSwitchLimitEnabled: typeof a.tabSwitchLimitEnabled === 'boolean'
+      ? a.tabSwitchLimitEnabled
+      : (typeof paper.tabSwitchLimitEnabled === 'boolean' ? paper.tabSwitchLimitEnabled : true),
+    tabSwitchLimit: typeof a.tabSwitchLimit === 'number'
+      ? a.tabSwitchLimit
+      : (typeof paper.tabSwitchLimit === 'number' ? paper.tabSwitchLimit : 3),
+    tabSwitchCount: a.tabSwitchCount || 0,
+    examStatus: a.examStatus || 'in_progress',
+    suspensionReason: a.suspensionReason || null,
     idx: a.idx, answers: a.answers, subjectiveText: a.subjectiveText || [], qEnd: a.qEnd, startedAt: a.startedAt,
     serverNow: Date.now(),
     title: a.paperTitle || paper.title || 'Quiz',

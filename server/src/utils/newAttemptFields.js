@@ -7,6 +7,13 @@
 export default function newAttemptFields(paper, run, { fromSchedule = false } = {}) {
   const now = Date.now(), scheduled = paper.startsAt ? new Date(paper.startsAt).getTime() : null;
   const base = fromSchedule && scheduled && scheduled <= now ? scheduled : now;
+  // Documents created before these settings existed keep the original behavior: enabled, limit 3.
+  const tabSwitchLimitEnabled = typeof paper.tabSwitchLimitEnabled === 'boolean'
+    ? paper.tabSwitchLimitEnabled
+    : true;
+  const tabSwitchLimit = tabSwitchLimitEnabled
+    ? (Number.isInteger(paper.tabSwitchLimit) && paper.tabSwitchLimit >= 0 ? paper.tabSwitchLimit : 3)
+    : 0;
   const customDuration = Number(paper.customDuration) || 0;
   const totalSeconds = paper.timingMode === 'customTotal' && customDuration > 0
     ? customDuration
@@ -15,6 +22,8 @@ export default function newAttemptFields(paper, run, { fromSchedule = false } = 
     perQ: Number(paper.perQ) || 0,
     timingMode: paper.timingMode || 'perQuestion',
     customDuration,
+    tabSwitchLimitEnabled,
+    tabSwitchLimit,
     idx: 0, answers: run.map(() => -1), subjectiveText: run.map(() => ''),
     qEnd: totalSeconds ? new Date(base + totalSeconds * 1000) : null,
     startedAt: new Date(now)

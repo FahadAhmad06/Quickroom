@@ -9,6 +9,8 @@ export default function beginTest(p) {
     idx: p.idx, answers: p.answers, subjectiveText: p.subjectiveText || [], qEnd: p.qEnd ? new Date(p.qEnd).getTime() : 0,
     startedAt: p.startedAt ? new Date(p.startedAt).getTime() : null,
     title: p.title || p.paperTitle || 'Quiz',
+    tabSwitchLimitEnabled: p.tabSwitchLimitEnabled !== undefined ? !!p.tabSwitchLimitEnabled : true,
+    tabSwitchLimit: Number.isInteger(p.tabSwitchLimit) && p.tabSwitchLimit >= 0 ? p.tabSwitchLimit : 3,
     examStatus: p.examStatus || 'in_progress', tabSwitchCount: p.tabSwitchCount || 0, suspensionReason: p.suspensionReason || null,
     skew: p.serverNow ? p.serverNow - Date.now() : 0
   }, sessionStorage);

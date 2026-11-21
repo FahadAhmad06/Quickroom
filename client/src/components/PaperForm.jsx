@@ -22,6 +22,8 @@ export default function PaperForm({ onSubmit, initial, submitLabel }) {
   const [f, setF] = useState(() => ({
     title: initial?.title || '', min: initial ? String(initial.perQ / 60) : '1', shuf: initial ? initial.shuffle : true,
     timingMode: initialMode, customHours: String(Math.floor(initialCustomSec / 3600)), customMinutes: String(Math.floor((initialCustomSec % 3600) / 60)),
+    tabSwitchEnabled: initial ? initial.tabSwitchLimitEnabled === true : false,
+    tabSwitchLimit: String(initial?.tabSwitchLimit ?? 3),
     dur: '24', unit: 'hours', never: false, schedule: false, startsAt: ''
   }));
   const [questions, setQuestions] = useState(initial?.questions || []), [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
@@ -34,15 +36,17 @@ export default function PaperForm({ onSubmit, initial, submitLabel }) {
     if (!f.title.trim()) return setMsg('Give the paper a title.');
     if (isNaN(min) || min < 0 || min > 60) return setMsg('Minutes per question must be from 0 to 60.');
     if (mode === 'customTotal' && customDuration <= 0) return setMsg('Enter a custom exam duration greater than zero.');
+    const tabSwitchLimit = Number(f.tabSwitchLimit);
+    if (f.tabSwitchEnabled && (!Number.isInteger(tabSwitchLimit) || tabSwitchLimit < 0)) return setMsg('Tab-switch limit must be a non-negative integer.');
     if (!edit && !f.never && (isNaN(dur) || dur <= 0)) return setMsg('Enter how long the link stays active.');
     if (!edit && f.schedule && !f.startsAt) return setMsg('Pick a start date and time, or turn scheduling off.');
     if (!questions.length) return setMsg('Add at least one question.');
     setBusy(true); setMsg('');
     try {
       await onSubmit(edit
-        ? { title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, shuffle: f.shuf, questions }
+        ? { title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, tabSwitchLimitEnabled: f.tabSwitchEnabled, tabSwitchLimit: f.tabSwitchEnabled ? tabSwitchLimit : 0, shuffle: f.shuf, questions }
         : {
-          title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, shuffle: f.shuf,
+          title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, tabSwitchLimitEnabled: f.tabSwitchEnabled, tabSwitchLimit: f.tabSwitchEnabled ? tabSwitchLimit : 0, shuffle: f.shuf,
           durationMs: f.never ? null : dur * UNIT[f.unit],
           startsAt: f.schedule && f.startsAt ? new Date(f.startsAt).toISOString() : null,
           questions
@@ -81,6 +85,18 @@ export default function PaperForm({ onSubmit, initial, submitLabel }) {
         </div>
         <p className="muted small-text" style={{ marginTop: -6 }}>Final total exam duration: {formatDuration(customDurationSeconds)}.</p>
       </>)}
+
+      <div className="field" style={{ marginBottom: 8 }}><b>Tab-switch protection</b></div>
+      <label className="chk">
+        <input type="checkbox" checked={f.tabSwitchEnabled} onChange={e => setF({ ...f, tabSwitchEnabled: e.target.checked })} />
+        Enable tab-switch limit
+      </label>
+      {f.tabSwitchEnabled && (
+        <div style={{ marginBottom: 10 }}>
+          <label className="field" htmlFor="pf-tab-switch-limit">Allowed tab switches before locking (0 locks on the first switch)</label>
+          <input id="pf-tab-switch-limit" type="number" min="0" step="1" value={f.tabSwitchLimit} onChange={e => setF({ ...f, tabSwitchLimit: e.target.value })} style={{ maxWidth: 160 }} />
+        </div>
+      )}
 
       {!edit && (<>
         <label className="field">How long should the student link stay active?</label>

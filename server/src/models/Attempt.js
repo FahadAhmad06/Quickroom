@@ -64,6 +64,8 @@ const schema = new mongoose.Schema({
   needsGrading: { type: Boolean, default: false }, // true from submit until every subjective question is approved
   // Tab-switch tracking and suspension control. The server keeps the authoritative count; refreshes
   // and duplicate events from the same browser action must never move the count forward on their own.
+  tabSwitchLimitEnabled: { type: Boolean, default: null }, // null means a legacy attempt still uses the old limit of 3
+  tabSwitchLimit: { type: Number, default: null, min: 0 },
   tabSwitchCount: { type: Number, default: 0 },
   examStatus: { type: String, enum: ['in_progress', 'suspended'], default: 'in_progress' },
   suspendedAt: { type: Date, default: null },

@@ -12,9 +12,15 @@ function totalMarks(questions) {
 }
 
 export default function paperSummary(p, submissions = 0) {
+  // Legacy papers without a setting retain the original enabled limit of 3.
+  const tabSwitchLimitEnabled = typeof p.tabSwitchLimitEnabled === 'boolean' ? p.tabSwitchLimitEnabled : true;
+  const tabSwitchLimit = tabSwitchLimitEnabled
+    ? (Number.isInteger(p.tabSwitchLimit) && p.tabSwitchLimit >= 0 ? p.tabSwitchLimit : 3)
+    : 0;
   return {
     _id: p._id, code: p.code, title: p.title, perQ: p.perQ, timingMode: p.timingMode || 'perQuestion',
     customDuration: p.customDuration || 0,
+    tabSwitchLimitEnabled, tabSwitchLimit,
     shuffleQuestions: !!(p.shuffleQuestions ?? p.shuffle ?? false),
     shuffleOptions: !!(p.shuffleOptions ?? false),
     shuffle: !!(p.shuffleQuestions ?? p.shuffle ?? false) || !!(p.shuffleOptions ?? false),

@@ -12,6 +12,8 @@ const schema = new mongoose.Schema({
   perQ: { type: Number, default: 0 },          // seconds per question, 0 = no limit
   timingMode: { type: String, enum: ['perQuestion', 'customTotal'], default: 'perQuestion' },
   customDuration: { type: Number, default: 0 }, // seconds for custom total exam length; 0 = not used
+  tabSwitchLimitEnabled: { type: Boolean, default: false },
+  tabSwitchLimit: { type: Number, default: 0, min: 0 },
   shuffleQuestions: { type: Boolean, default: false },
   shuffleOptions: { type: Boolean, default: false },
   // legacy compatibility: older clients still send/expect a single `shuffle` boolean.

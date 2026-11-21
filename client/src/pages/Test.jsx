@@ -31,6 +31,9 @@ export default function Test({ theme, onToggleTheme }) {
   const [violationAlert, setViolationAlert] = useState(null);
   const [mobileInfoOpen, setMobileInfoOpen] = useState(true);
   const toast = useToast();
+  const tabSwitchLimit = T?.tabSwitchLimitEnabled
+    ? (Number.isInteger(T.tabSwitchLimit) && T.tabSwitchLimit >= 0 ? T.tabSwitchLimit : 3)
+    : 0;
   const done = useRef(false), queue = useRef(Promise.resolve()), Tref = useRef(T), viewRef = useRef(view), lastStatus = useRef(null);
   Tref.current = T; viewRef.current = view;
 
@@ -61,6 +64,11 @@ export default function Test({ theme, onToggleTheme }) {
       subjectiveText,
       qEnd: p.qEnd ? new Date(p.qEnd).getTime() : 0,
       startedAt: p.startedAt ? new Date(p.startedAt).getTime() : cur.startedAt || null,
+      tabSwitchCount: p.tabSwitchCount ?? cur.tabSwitchCount ?? 0,
+      tabSwitchLimitEnabled: p.tabSwitchLimitEnabled !== undefined ? !!p.tabSwitchLimitEnabled : cur.tabSwitchLimitEnabled,
+      tabSwitchLimit: Number.isInteger(p.tabSwitchLimit) ? p.tabSwitchLimit : cur.tabSwitchLimit,
+      examStatus: p.examStatus || cur.examStatus || 'in_progress',
+      suspensionReason: p.suspensionReason ?? cur.suspensionReason ?? null,
       skew: p.serverNow ? p.serverNow - Date.now() : cur.skew || 0
     });
     setView(p.idx);
@@ -83,7 +91,7 @@ export default function Test({ theme, onToggleTheme }) {
       setViolationAlert('Your examination has been suspended because you exceeded the allowed tab-switch limit. Please contact your teacher or administrator.');
       setNotice('');
       setErr('');
-      setT(t => ({ ...t, examStatus: 'suspended', suspensionReason: statusPoll.data.suspensionReason || t.suspensionReason || 'Your examination has been suspended because you exceeded the allowed tab-switch limit. Please contact your teacher or administrator.' }));
+      setT(t => ({ ...t, examStatus: 'suspended', tabSwitchCount: statusPoll.data.tabSwitchCount ?? t.tabSwitchCount ?? 0, suspensionReason: statusPoll.data.suspensionReason || t.suspensionReason || 'Your examination has been suspended because you exceeded the allowed tab-switch limit. Please contact your teacher or administrator.' }));
       return;
     }
     if (statusPoll.data && statusPoll.data.examStatus === 'in_progress') {
@@ -111,12 +119,12 @@ export default function Test({ theme, onToggleTheme }) {
 
   useEffect(() => {
     const onVisibility = () => {
-      if (!T || done.current || T.examStatus === 'suspended') return;
+      if (!T || done.current || T.examStatus === 'suspended' || T.tabSwitchLimitEnabled === false) return;
       if (document.visibilityState === 'hidden') {
         api('/attempts/' + T.attemptId + '/violation', { method: 'POST' }).then(r => {
           setT(t => ({ ...t, tabSwitchCount: r.tabSwitchCount || 0, examStatus: r.examStatus || t.examStatus, suspensionReason: r.suspensionReason || t.suspensionReason }));
-          const nextCount = Math.min((r.tabSwitchCount || 0), tabSwitchLimit);
-          const currentWarning = `${nextCount}/${tabSwitchLimit}`;
+          const nextCount = r.tabSwitchCount || 0;
+          const currentWarning = `${nextCount}/${tabSwitchLimit + 1}`;
           if (r.alert === 'warning') {
             toast.bad(`Tab switch warning ${currentWarning}. Remaining ${formatClock(remainingMs)} left out of ${formatClock(totalDurationMs)} total.`);
             setNotice(`Tab switch warning ${currentWarning}. Remaining ${formatClock(remainingMs)} left out of ${formatClock(totalDurationMs)} total.`);
@@ -147,8 +155,6 @@ export default function Test({ theme, onToggleTheme }) {
     const s = abs % 60;
     return h > 0 ? [h, m, s].map(v => String(v).padStart(2, '0')).join(':') : [m, s].map(v => String(v).padStart(2, '0')).join(':');
   };
-  const tabSwitchLimit = 3;
-
   const finish = async t => {
     if (done.current) return;
     done.current = true; setConfirming(false); setSaving(true); setErr('');
@@ -231,6 +237,7 @@ export default function Test({ theme, onToggleTheme }) {
   if (!T) return <Navigate to="/" replace />;
 
   if (T.examStatus === 'suspended' || violationAlert) {
+    const lockedRemainingMs = T.qEnd ? Math.max(0, T.qEnd - (now + (T.skew || 0))) : 0;
     return (
       <div className="exam fade-up">
         <div className="card exam-card" style={{ padding: 32, textAlign: 'center' }}>
@@ -238,6 +245,7 @@ export default function Test({ theme, onToggleTheme }) {
           <p className="muted" style={{ maxWidth: 620, margin: '0 auto 12px auto', lineHeight: 1.6 }}>
             {T.suspensionReason || violationAlert || 'Your examination has been suspended because you exceeded the allowed tab-switch limit. Please contact your teacher or administrator.'}
           </p>
+          {T.qEnd && <p className="muted"><b>Timer:</b> {formatClock(lockedRemainingMs)} remaining</p>}
           <p className="muted small-text">Teacher or owner approval is required before you can continue this examination.</p>
         </div>
       </div>
