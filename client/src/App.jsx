@@ -37,6 +37,8 @@ import Teachers from './pages/admin/Teachers';
 import TeacherProfile from './pages/admin/TeacherProfile';
 import StudentProfile from './pages/admin/StudentProfile';
 import ChangePassword from './pages/admin/ChangePassword';
+import Classes from './pages/admin/Classes';
+import ClassDetails from './pages/admin/ClassDetails';
 
 function Shell() {
   const [theme, toggleTheme] = useTheme();
@@ -66,6 +68,8 @@ function Shell() {
           <Route path="papers/:id/edit" element={<EditPaper />} />
           <Route path="results" element={<Results />} />
           <Route path="rolls" element={<Rolls />} />
+          <Route path="classes" element={<Classes />} />
+          <Route path="classes/:id" element={<ClassDetails />} />
           <Route path="students" element={<Students />} />
           <Route path="students/:roll" element={<StudentProfile />} />
           <Route path="teachers" element={<RequireAdmin owner><Teachers /></RequireAdmin>} />

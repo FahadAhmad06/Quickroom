@@ -79,6 +79,29 @@ export default function StudentDashboard() {
       </>)}
     </div>
 
+    {d && (
+      <div className="grid cols-2" style={{ marginBottom: 16 }}>
+        {[
+          ['Available Papers', d.availablePapers || [], 'file'],
+          ['Upcoming Papers', d.upcomingPapers || [], 'calendar'],
+          ['Completed Papers', d.completedPapers || [], 'checkCircle'],
+          ['Expired Papers', d.expiredPapers || [], 'clock']
+        ].map(([title, papers, icon]) => (
+          <div className="card" key={title} style={{ margin: 0 }}>
+            <div className="card-head"><h2><span className="hicon"><Icon name={icon} size={16} /></span>{title}</h2></div>
+            {!papers.length
+              ? <p className="muted small-text" style={{ margin: 0 }}>No papers in this section.</p>
+              : papers.map(p => (
+                <div className="qrow" key={p.code}>
+                  <div><b>{p.title}</b><div className="muted small-text">Code {p.code}</div></div>
+                  {title === 'Available Papers' && <Link className="btn ghost small" to={'/join/' + p.code}>Open</Link>}
+                </div>
+              ))}
+          </div>
+        ))}
+      </div>
+    )}
+
     <div className="card">
       <div className="card-head">
         <h2><span className="hicon"><Icon name="file" size={16} /></span>Exam history</h2>

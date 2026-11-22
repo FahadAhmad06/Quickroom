@@ -12,6 +12,8 @@ const schema = new mongoose.Schema({
   createdBy: String, // legacy email string; kept for display
   // adminId: the Admin._id that created this allowlist entry.
   // Null for legacy entries created before multi-admin support.
-  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null, index: true }
+  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null, index: true },
+  classId: { type: mongoose.Schema.Types.ObjectId, ref: 'ClassRoom', default: null, index: true },
+  className: { type: String, default: null, trim: true }
 }, { timestamps: true });
 export default mongoose.model('AllowedRollNumber', schema);

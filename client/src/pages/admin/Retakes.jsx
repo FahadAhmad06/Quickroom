@@ -53,9 +53,13 @@ export default function Retakes() {
                   <td>{g.retakeAllowed ? <span className="badge ok"><Icon name="check" />Allowed</span>
                     : g.retakeCancelled ? <span className="badge bad"><Icon name="close" />Cancelled</span>
                     : <span className="badge"><Icon name="minus" />None</span>}</td>
-                  <td>{g.retakeAllowed
-                    ? <button className="ghost small" disabled={busy} onClick={() => rt.cancel(g)}>{busy ? 'Saving…' : 'Cancel retake'}</button>
-                    : <button className="small" disabled={busy} onClick={() => rt.allow(g)}>{busy ? 'Saving…' : 'Allow retake'}</button>}</td>
+                  <td>
+                    <div className="retake-actions">
+                      {g.retakeAllowed
+                        ? <button className="ghost small" disabled={busy} onClick={() => rt.cancel(g)}>{busy ? 'Saving…' : 'Cancel retake'}</button>
+                        : <button className="small" disabled={busy} onClick={() => rt.allow(g)}>{busy ? 'Saving…' : 'Allow retake'}</button>}
+                    </div>
+                  </td>
                 </tr>
               );
             })}</tbody>

@@ -4,6 +4,8 @@ import Paper from '../models/Paper.js';
 import Admin from '../models/Admin.js';
 import AllowedRollNumber from '../models/AllowedRollNumber.js';
 import Attempt from '../models/Attempt.js';
+import Student from '../models/Student.js';
+import ClassRoom from '../models/ClassRoom.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import httpError from '../utils/httpError.js';
 import rankResults from '../utils/rankResults.js';
@@ -41,6 +43,81 @@ r.get('/results', asyncHandler(async (req, res) => {
   res.json(rankResults(await Result.find(f).lean()));
 }));
 
+// Unified registered-student list. Includes PIN registrations and Class Code registrations.
+// Regular admins are scoped by the classes and roll allowlist entries they own.
+r.get('/students', asyncHandler(async (req, res) => {
+  let classFilter = {};
+  let rollFilter = {};
+  if (!req.admin.isSuper) {
+    classFilter = { adminId: req.admin.adminId };
+    rollFilter = { adminId: req.admin.adminId };
+  }
+
+  const [classes, rolls] = await Promise.all([
+    ClassRoom.find(classFilter).select('_id name code').lean(),
+    AllowedRollNumber.find(rollFilter).select('rollNumber registeredStudent classId className isEnabled').populate('registeredStudent', 'name rollNumber registrationMethod createdAt').lean()
+  ]);
+  const classMap = new Map(classes.map(c => [String(c._id), c]));
+  const classIds = classes.map(c => c._id);
+  const students = await Student.find(
+    req.admin.isSuper ? { classIds: { $exists: true, $ne: [] } } : { classIds: { $in: classIds } }
+  ).select('name rollNumber registrationMethod classIds createdAt').lean();
+
+  const byRoll = new Map();
+  for (const student of students) {
+    const studentClasses = (student.classIds || [])
+      .map(id => classMap.get(String(id)))
+      .filter(Boolean);
+    byRoll.set(student.rollNumber, {
+      _id: student._id,
+      name: student.name,
+      rollNumber: student.rollNumber,
+      registrationMethod: student.registrationMethod || 'legacy',
+      classes: studentClasses.map(c => ({ _id: c._id, name: c.name, code: c.code })),
+      createdAt: student.createdAt
+    });
+  }
+
+  for (const roll of rolls) {
+    if (!roll.registeredStudent) continue;
+    const c = roll.classId ? classMap.get(String(roll.classId)) : null;
+    const existing = byRoll.get(roll.rollNumber);
+    byRoll.set(roll.rollNumber, {
+      _id: roll.registeredStudent._id,
+      allowlistId: roll._id,
+      name: roll.registeredStudent.name,
+      rollNumber: roll.rollNumber,
+      registrationMethod: roll.registeredStudent.registrationMethod || (roll.classId ? 'pin' : 'legacy'),
+      classes: c ? [{ _id: c._id, name: c.name, code: c.code }] : (existing?.classes || (roll.className ? [{ name: roll.className }] : [])),
+      createdAt: roll.registeredStudent.createdAt || existing?.createdAt || roll.createdAt,
+      isEnabled: roll.isEnabled !== false
+    });
+  }
+
+  res.json([...byRoll.values()].sort((a, b) => a.rollNumber.localeCompare(b.rollNumber)));
+}));
+
+r.delete('/students/:roll', asyncHandler(async (req, res) => {
+  const roll = normalizeRoll(req.params.roll);
+  const allowed = await AllowedRollNumber.findOne({ rollNumber: roll }).lean();
+  if (allowed) throw httpError(409, 'Use the Roll & PIN Management page to delete this PIN-registered student.');
+  const student = await Student.findOne({ rollNumber: roll }).lean();
+  if (!student) throw httpError(404, 'Student not found.');
+  if (!req.admin.isSuper) {
+    const ownedClasses = await ClassRoom.find({ adminId: req.admin.adminId }).select('_id').lean();
+    const ownedIds = ownedClasses.map(c => String(c._id));
+    if (!(student.classIds || []).some(id => ownedIds.includes(String(id)))) {
+      throw httpError(403, 'This student is not in your workspace.');
+    }
+  }
+  await Student.deleteOne({ _id: student._id });
+  await Promise.all((student.classIds || []).map(async id => {
+    const count = await Student.countDocuments({ classIds: id });
+    await ClassRoom.updateOne({ _id: id }, { registeredCount: count });
+  }));
+  res.json({ ok: true });
+}));
+
 // Student Profile data: one student's info, assigned teacher, and complete quiz history. Used by
 // both the Owner's global Students page and the Owner's Teacher Profile → Student drill-down.
 // A regular admin may only open a student registered under their own roll numbers; the optional
@@ -48,23 +125,36 @@ r.get('/results', asyncHandler(async (req, res) => {
 // Owner's normal full access) — it 404s if the roll isn't actually assigned to that teacher.
 r.get('/students/:roll', asyncHandler(async (req, res) => {
   const roll = normalizeRoll(req.params.roll);
-  const allowed = await AllowedRollNumber.findOne({ rollNumber: roll })
-    .populate('registeredStudent', 'name rollNumber createdAt').lean();
-  if (!allowed || !allowed.registeredStudent) throw httpError(404, 'Student not found.');
-
-  if (!req.admin.isSuper && String(allowed.adminId) !== req.admin.adminId) {
-    throw httpError(403, 'This student is not in your workspace.');
+  let allowed = await AllowedRollNumber.findOne({ rollNumber: roll })
+    .populate('registeredStudent', 'name rollNumber registrationMethod classIds createdAt').lean();
+  let student = allowed?.registeredStudent || null;
+  if (!student) {
+    student = await Student.findOne({ rollNumber: roll }).select('name rollNumber registrationMethod classIds createdAt').lean();
   }
-  if (req.query.teacherId && String(allowed.adminId || '') !== String(req.query.teacherId)) {
-    throw httpError(404, 'This student is not assigned to that teacher.');
+  if (!student) throw httpError(404, 'Student not found.');
+
+  if (!req.admin.isSuper) {
+    const ownedClassIds = (await ClassRoom.find({ adminId: req.admin.adminId }).select('_id').lean()).map(c => String(c._id));
+    const inOwnedClass = (student.classIds || []).some(id => ownedClassIds.includes(String(id)));
+    const isOwnedRoll = allowed && String(allowed.adminId) === req.admin.adminId;
+    if (!inOwnedClass && !isOwnedRoll) throw httpError(403, 'This student is not in your workspace.');
+  }
+  if (req.query.teacherId) {
+    const classes = await ClassRoom.find({ _id: { $in: student.classIds || [] }, adminId: req.query.teacherId }).select('_id').lean();
+    const isOwnedRoll = allowed && String(allowed.adminId || '') === String(req.query.teacherId);
+    if (!classes.length && !isOwnedRoll) throw httpError(404, 'This student is not assigned to that teacher.');
   }
 
-  const teacherDoc = allowed.adminId ? await Admin.findById(allowed.adminId).select('name email').lean() : null;
+  const teacherDoc = allowed?.adminId ? await Admin.findById(allowed.adminId).select('name email').lean() : null;
+  const classIds = student.classIds || [];
+  const classes = classIds.length ? await ClassRoom.find({ _id: { $in: classIds } }).select('_id name code').lean() : [];
   const results = await Result.find({ roll }).sort({ createdAt: -1 }).lean();
 
   res.json({
-    name: allowed.registeredStudent.name, roll, email: results[0]?.email || '',
-    registeredAt: allowed.registeredStudent.createdAt,
+    name: student.name, roll, email: results[0]?.email || '',
+    registeredAt: student.createdAt,
+    registrationMethod: student.registrationMethod || (allowed?.classId ? 'pin' : 'legacy'),
+    classes: classes.map(c => ({ _id: c._id, name: c.name, code: c.code })),
     teacher: teacherDoc ? { id: teacherDoc._id, name: displayName(teacherDoc) } : null,
     results: results.map(scoreFields)
   });

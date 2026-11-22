@@ -48,7 +48,7 @@ export default function StudentProfile() {
   const best = results.length ? Math.max(...results.map(r => r.percent)) : null;
 
   return (<>
-    <PageHeader title={d.name} subtitle={'Roll ' + d.roll + (d.teacher ? '  ·  Teacher: ' + d.teacher.name : '')}>
+    <PageHeader title={d.name} subtitle={'Roll ' + d.roll + '  ·  ' + (d.registrationMethod === 'pin' ? 'Registration PIN' : d.registrationMethod === 'class_code' ? 'Class Code' : 'Legacy') + (d.classes?.length ? '  ·  ' + d.classes.map(c => c.name).join(', ') : '') + (d.teacher ? '  ·  Teacher: ' + d.teacher.name : '')}>
       {teacherId
         ? <Link className="btn ghost" to={'/admin/teachers/' + teacherId}><Icon name="chevronLeft" size={16} />Back to Teacher Profile</Link>
         : <Link className="btn ghost" to="/admin/students"><Icon name="chevronLeft" size={16} />All students</Link>}

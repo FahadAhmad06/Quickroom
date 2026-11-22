@@ -6,7 +6,7 @@ import RetakeGrant from '../models/RetakeGrant.js';
 import normalizeRoll from '../utils/normalizeRoll.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import httpError from '../utils/httpError.js';
-import { ownerFilter, adminObjectId } from '../utils/adminFilter.js';
+import { ownerFilter, adminObjectId, isOwner } from '../utils/adminFilter.js';
 
 const r = Router(); // mounted behind requireAdmin
 
@@ -42,16 +42,21 @@ r.get('/retakes', asyncHandler(async (req, res) => {
   ]);
 
   const grantFilter = codes !== null ? { paperCode: { $in: codes }, used: false } : { used: false };
-  const grants = await RetakeGrant.find(grantFilter).select('rollNumber paperCode cancelled').lean();
-  const allowed = new Set(grants.filter(g => !g.cancelled).map(g => g.rollNumber + '|' + g.paperCode));
-  const cancelled = new Set(grants.filter(g => g.cancelled).map(g => g.rollNumber + '|' + g.paperCode));
+  const grants = await RetakeGrant.find(grantFilter).select('_id rollNumber paperCode cancelled').lean();
+  const allowed = new Map(grants.filter(g => !g.cancelled).map(g => [g.rollNumber + '|' + g.paperCode, g]));
+  const cancelled = new Map(grants.filter(g => g.cancelled).map(g => [g.rollNumber + '|' + g.paperCode, g]));
 
-  res.json(groups.map(g => ({
-    roll: g._id.roll, paperCode: g._id.paperCode, name: g.name, paperTitle: g.paperTitle,
-    attempts: g.attempts, lastCorrect: g.lastCorrect, lastTotal: g.lastTotal, lastAt: g.lastAt,
-    retakeAllowed: allowed.has(g._id.roll + '|' + g._id.paperCode),
-    retakeCancelled: cancelled.has(g._id.roll + '|' + g._id.paperCode)
-  })));
+  res.json(groups.map(g => {
+    const key = g._id.roll + '|' + g._id.paperCode;
+    const grant = allowed.get(key) || cancelled.get(key);
+    return {
+      roll: g._id.roll, paperCode: g._id.paperCode, name: g.name, paperTitle: g.paperTitle,
+      attempts: g.attempts, lastCorrect: g.lastCorrect, lastTotal: g.lastTotal, lastAt: g.lastAt,
+      retakeAllowed: allowed.has(key),
+      retakeCancelled: cancelled.has(key),
+      retakeGrantId: grant ? String(grant._id) : null
+    };
+  }));
 }));
 
 // Grant (or re-grant, after a previous grant was consumed/cancelled) a retake for one student on one paper.
@@ -106,5 +111,21 @@ r.post('/retakes/cancel', asyncHandler(async (req, res) => {
   }
   res.json({ ok: true, rollNumber, paperCode });
 }));
+
+// Delete only the selected unused retake grant. Attempt and Result records are never touched.
+r.delete('/retakes/:id', asyncHandler(async (req, res) => {
+  const grant = await RetakeGrant.findById(req.params.id);
+  if (!grant) throw httpError(404, 'Retake record not found.');
+  if (grant.used) throw httpError(409, 'This retake has already been used and cannot be deleted.');
+
+  const paper = await Paper.findOne({ code: grant.paperCode });
+  if (!paper) throw httpError(404, 'Associated paper not found.');
+  if (!isOwner(req, paper)) throw httpError(403, 'You do not have permission to delete this retake record.');
+  if (!isOwner(req, grant)) throw httpError(403, 'You do not have permission to delete this retake record.');
+
+  await RetakeGrant.deleteOne({ _id: grant._id });
+  res.json({ ok: true, deletedRetakeId: String(grant._id) });
+}));
+
 
 export default r;

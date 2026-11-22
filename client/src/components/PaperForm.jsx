@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import useFetch from '../hooks/useFetch';
 import QuestionBuilder from './QuestionBuilder';
 import UNIT from '../utils/units';
 import Icon from './Icon';
@@ -17,6 +18,9 @@ const formatDuration = sec => {
 // timing per question — link expiry and start time are managed on the paper page, as before.
 export default function PaperForm({ onSubmit, initial, submitLabel }) {
   const edit = !!initial;
+  const classesState = useFetch('/admin/classes');
+  const [assignAll, setAssignAll] = useState(initial ? initial.assignAllClasses === true : true);
+  const [assignedIds, setAssignedIds] = useState(initial?.assignedClassIds || []);
   const initialMode = initial?.timingMode === 'customTotal' ? 'customTotal' : 'perQuestion';
   const initialCustomSec = Number(initial?.customDuration) || 0;
   const [f, setF] = useState(() => ({
@@ -44,16 +48,36 @@ export default function PaperForm({ onSubmit, initial, submitLabel }) {
     setBusy(true); setMsg('');
     try {
       await onSubmit(edit
-        ? { title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, tabSwitchLimitEnabled: f.tabSwitchEnabled, tabSwitchLimit: f.tabSwitchEnabled ? tabSwitchLimit : 0, shuffle: f.shuf, questions }
+        ? { title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, tabSwitchLimitEnabled: f.tabSwitchEnabled, tabSwitchLimit: f.tabSwitchEnabled ? tabSwitchLimit : 0, shuffle: f.shuf, questions, assignAllClasses: assignAll, assignedClassIds: assignAll ? [] : assignedIds }
         : {
           title: f.title.trim(), perQ: Math.round(min * 60), timingMode: mode, customDuration, tabSwitchLimitEnabled: f.tabSwitchEnabled, tabSwitchLimit: f.tabSwitchEnabled ? tabSwitchLimit : 0, shuffle: f.shuf,
           durationMs: f.never ? null : dur * UNIT[f.unit],
           startsAt: f.schedule && f.startsAt ? new Date(f.startsAt).toISOString() : null,
-          questions
+          questions, assignAllClasses: assignAll, assignedClassIds: assignAll ? [] : assignedIds
         });
     } catch (e) { setMsg(e.message); setBusy(false); }
   };
   return (<>
+    <div className="card">
+      <div className="card-head"><h2><span className="hicon"><Icon name="students" size={16} /></span>Assign Paper to Classes</h2></div>
+      <label className="chk">
+        <input type="checkbox" checked={assignAll} onChange={e => { setAssignAll(e.target.checked); if (e.target.checked) setAssignedIds([]); }} />
+        All classes
+      </label>
+      {!assignAll && <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+        {(classesState.data || []).map(c => (
+          <label className="chk" key={c._id} style={{ margin: 0 }}>
+            <input type="checkbox" checked={assignedIds.map(String).includes(String(c._id))} onChange={e => setAssignedIds(ids => e.target.checked ? [...ids, c._id] : ids.filter(id => String(id) !== String(c._id)))} />
+            {c.name} — {c.registeredCount} Students
+          </label>
+        ))}
+      </div>}
+      <p className="muted small-text" style={{ marginBottom: 0 }}>
+        Students who will receive this paper: {assignAll
+          ? (classesState.data || []).reduce((n, c) => n + c.registeredCount, 0) + ' (all classes)'
+          : (classesState.data || []).filter(c => assignedIds.map(String).includes(String(c._id))).reduce((n, c) => n + c.registeredCount, 0)}
+      </p>
+    </div>
     <div className="card">
       <div className="card-head"><h2><span className="hicon"><Icon name="settings" size={16} /></span>Quiz settings</h2></div>
       <label className="field" htmlFor="pf-title">Title</label>

@@ -18,6 +18,7 @@ import attemptPayload from '../utils/attemptPayload.js';
 import newAttemptFields from '../utils/newAttemptFields.js';
 import { ownerFilter, adminObjectId, isOwner } from '../utils/adminFilter.js';
 import Admin from '../models/Admin.js';
+import ClassRoom from '../models/ClassRoom.js';
 import displayName from '../utils/displayName.js';
 
 const r = Router(), DAY = 86400000;
@@ -36,6 +37,17 @@ const findPaper = async (id, req) => {
   if (!isOwner(req, p)) throw httpError(403, 'You do not have permission to access this paper.');
   return p;
 };
+
+async function resolveAssignments(req, body) {
+  if (body.assignAllClasses === undefined && body.assignedClassIds === undefined) return null;
+  const assignAll = body.assignAllClasses === true;
+  const ids = Array.isArray(body.assignedClassIds) ? body.assignedClassIds : [];
+  if (assignAll) return { assignAllClasses: true, assignedClassIds: [] };
+  if (!ids.length) return { assignAllClasses: false, assignedClassIds: [] };
+  const classes = await ClassRoom.find({ _id: { $in: ids }, deletedAt: null, ...ownerFilter(req) }).select('_id').lean();
+  if (classes.length !== [...new Set(ids.map(String))].length) throw httpError(400, 'One or more selected classes are invalid or are not owned by you.');
+  return { assignAllClasses: false, assignedClassIds: classes.map(c => c._id) };
+}
 
 // Dashboard data. Every number is counted from the database; the *Recent fields are real
 // "created in the last 30 days" counts, not estimated trends.
@@ -119,7 +131,18 @@ r.get('/stats', asyncHandler(async (req, res) => {
 // or submitted it, so no one's questions or deadline change mid-exam or after grading.
 r.patch('/papers/:id', asyncHandler(async (req, res) => {
   const p = await findPaper(req.params.id, req), b = req.body || {};
+  const assignment = await resolveAssignments(req, b);
+  if (assignment) {
+    p.assignAllClasses = assignment.assignAllClasses;
+    p.assignedClassIds = assignment.assignedClassIds;
+  }
   if (await Attempt.exists({ paperCode: p.code, preview: false }) || await Result.exists({ paperCode: p.code })) {
+    const contentEdit = b.title !== undefined || b.questions !== undefined || b.perQ !== undefined || b.timingMode !== undefined || b.tabSwitchLimitEnabled !== undefined;
+    if (assignment && !contentEdit) {
+      await p.save();
+      return res.json(paperSummary(p.toObject()));
+    }
+    if (assignment) await p.save();
     throw httpError(400, 'Students have already taken this paper; its questions and timing can no longer be edited.');
   }
   const title = String(b.title || '').trim(), perQ = Number(b.perQ), timingMode = b.timingMode === 'customTotal' ? 'customTotal' : 'perQuestion';
@@ -165,6 +188,7 @@ r.get('/papers', asyncHandler(async (req, res) => {
 
 r.post('/papers', asyncHandler(async (req, res) => {
   const b = req.body || {}, title = String(b.title || '').trim();
+  const assignment = await resolveAssignments(req, b);
   const perQ = Number(b.perQ), dur = b.durationMs == null ? null : Number(b.durationMs), timingMode = b.timingMode === 'customTotal' ? 'customTotal' : 'perQuestion';
   const customDuration = timingMode === 'customTotal' ? Number(b.customDuration) : 0;
   const tabSwitchLimitEnabled = b.tabSwitchLimitEnabled === true;
@@ -190,6 +214,7 @@ r.post('/papers', asyncHandler(async (req, res) => {
     shuffle: shuffleSettings.shuffleQuestions || shuffleSettings.shuffleOptions,
     startsAt, expiresAt: dur === null ? null : new Date(Date.now() + dur), createdBy: req.admin.email,
     adminId: adminObjectId(req), // always set from the verified JWT, never from the request body
+    ...(assignment || {}),
     questions: b.questions.map(cleanQuestion)
   });
   res.status(201).json(paperSummary(paper.toObject()));

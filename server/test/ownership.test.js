@@ -306,7 +306,7 @@ describe('Subjective grading isolation', () => {
 });
 
 describe('Retake isolation', () => {
-  let adminA, adminB, paperA;
+  let adminA, adminB, paperA, grantId;
 
   test('Setup: Admin A quiz with a result', async () => {
     adminA = await createAdmin('admina4@test.local');
@@ -333,13 +333,46 @@ describe('Retake isolation', () => {
 
   test('Admin B cannot see retakes for Admin A\'s paper', async () => {
     // Grant retake as Admin A first.
-    await call('/admin/retakes', {
+    const granted = await call('/admin/retakes', {
       method: 'POST', auth: adminA.token,
       body: { rollNumber: 'RETAKEROLL001', paperCode: paperA.code }
     });
+    assert.equal(granted.status, 201);
     const res = await call('/admin/retakes?code=' + paperA.code, { auth: adminB.token });
     assert.ok(res.status === 403 || (res.status === 200 && res.body.length === 0),
       'Admin B should not see Admin A retakes');
+  });
+
+  test('Only the authorized owner can delete the selected retake record', async () => {
+    const listed = await call('/admin/retakes?code=' + paperA.code, { auth: adminA.token });
+    assert.equal(listed.status, 200);
+    const row = listed.body.find(r => r.roll === 'RETAKEROLL001' && r.paperCode === paperA.code);
+    assert.ok(row?.retakeGrantId, 'The owner should receive the retake grant ID');
+    grantId = row.retakeGrantId;
+
+    const unauthenticated = await call('/admin/retakes/' + grantId, { method: 'DELETE' });
+    assert.equal(unauthenticated.status, 401);
+
+    const unauthorized = await call('/admin/retakes/' + grantId, { method: 'DELETE', auth: adminB.token });
+    assert.equal(unauthorized.status, 403);
+
+    const grantBefore = await RetakeGrant.findById(grantId).lean();
+    assert.ok(grantBefore, 'Unauthorized deletion must leave the grant unchanged');
+
+    const deleted = await call('/admin/retakes/' + grantId, { method: 'DELETE', auth: adminA.token });
+    assert.equal(deleted.status, 200);
+    assert.equal(await RetakeGrant.countDocuments({ _id: grantId }), 0);
+
+    assert.equal(await Paper.countDocuments({ _id: paperA._id }), 1);
+    assert.equal(await Attempt.countDocuments({ paperCode: paperA.code }), 1);
+    assert.equal(await Result.countDocuments({ paperCode: paperA.code }), 1);
+  });
+
+  test('Deleting a retake record does not affect the student account or remaining records', async () => {
+    const student = await Student.findOne({ rollNumber: 'RETAKEROLL001' }).lean();
+    assert.ok(student, 'The student account must remain');
+    assert.equal(await RetakeGrant.countDocuments({ paperCode: paperA.code }), 0);
+    assert.equal(await Result.countDocuments({ paperCode: paperA.code }), 1);
   });
 });
 

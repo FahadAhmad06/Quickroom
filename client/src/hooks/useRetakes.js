@@ -3,7 +3,7 @@ import useFetch from './useFetch';
 import api from '../utils/api';
 import { useConfirm, useToast } from '../components/Feedback';
 
-// Retake state from GET /admin/retakes plus allow/cancel actions (POST /admin/retakes, /admin/retakes/cancel).
+// Retake state from GET /admin/retakes plus allow/cancel/delete actions.
 // `tableProps` plugs straight into <ResultsTable>.
 export default function useRetakes(query = '') {
   const state = useFetch('/admin/retakes' + query), toast = useToast(), confirm = useConfirm();

@@ -99,7 +99,10 @@ export async function queueAttemptEvaluations(attemptId) {
 function schedulePendingSweep() {
   if (pendingSweep || limiter.active || limiter.waiting) return;
   let mayHaveMore = false;
-  pendingSweep = processPending()
+  // Catch only pending/stale work immediately. Transient failures are intentionally left for the
+  // scheduled sweep or an explicit processPending call, so a failed submit isn't immediately
+  // retried multiple times by the fire-and-forget queue.
+  pendingSweep = processPending(20, { retryTransient: false })
     .then(processed => { mayHaveMore = processed >= 20; })
     .catch(e => console.error('[eval] pending sweep failed:', e.message))
     .finally(() => {
@@ -128,12 +131,13 @@ export async function retryFailed(attemptId, idx, { transientOnly, by }) {
 // attempts follow the same lifecycle; finalizeIfReady still avoids creating a Result for them.
 // Never touches awaiting_review/approved/manual_review, and never steals a claim that is still
 // within its lease.
-export async function processPending(limit = 20) {
+export async function processPending(limit = 20, { retryTransient = true } = {}) {
   const cutoff = new Date(Date.now() - LEASE_MS);
   const stale = { status: 'evaluating', $or: [{ claimedAt: { $lt: cutoff } }, { claimedAt: null }] };
   const retryable = { status: 'failed', retryCount: { $lt: config.evalMaxRuns }, $or: [{ failKind: 'transient' }, { failKind: null, failReason: LEGACY_TRANSIENT }],
     $nor: [{ retryAfter: { $gt: new Date() } }] };
-  const found = await Attempt.find({ needsGrading: true, evaluations: { $elemMatch: { $or: [{ status: 'pending' }, stale, retryable] } } })
+  const catchup = retryTransient ? [{ status: 'pending' }, stale, retryable] : [{ status: 'pending' }, stale];
+  const found = await Attempt.find({ needsGrading: true, evaluations: { $elemMatch: { $or: catchup } } })
     .select('_id evaluations.idx evaluations.status evaluations.claimToken evaluations.claimedAt evaluations.failKind evaluations.failReason evaluations.retryCount evaluations.retryAfter')
     .limit(limit).lean();
   let processed = 0;
@@ -141,7 +145,7 @@ export async function processPending(limit = 20) {
     for (const e of a.evaluations) {
       const isStale = e.status === 'evaluating' && (!e.claimedAt || e.claimedAt < cutoff);
       const transient = e.failKind === 'transient' || (!e.failKind && LEGACY_TRANSIENT.test(e.failReason || ''));
-      const isRetry = e.status === 'failed' && transient && e.retryCount < config.evalMaxRuns && !(e.retryAfter > new Date());
+      const isRetry = retryTransient && e.status === 'failed' && transient && e.retryCount < config.evalMaxRuns && !(e.retryAfter > new Date());
       if (!isStale && !isRetry) continue;
       // Conditional on what we just read, so a claim made in between is left alone.
       const cond = isStale ? { idx: e.idx, status: 'evaluating', claimToken: e.claimToken ?? null } : { idx: e.idx, status: 'failed', retryCount: e.retryCount };

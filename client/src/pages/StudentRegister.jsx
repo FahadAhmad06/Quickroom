@@ -7,6 +7,8 @@ import Icon from '../components/Icon';
 
 export default function StudentRegister() {
   const [f, setF] = useState({ name: '', rollNumber: '', pin: '', password: '', confirmPassword: '' });
+  const [method, setMethod] = useState('pin');
+  const [classCode, setClassCode] = useState('');
   const [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
   const navigate = useNavigate(), [sp] = useSearchParams();
   const loginHref = '/student-login' + (sp.get('next') ? '?next=' + encodeURIComponent(sp.get('next')) : '');
@@ -16,12 +18,13 @@ export default function StudentRegister() {
     if (busy) return;
     if (!f.name.trim()) return setMsg('Enter your name.');
     if (!f.rollNumber.trim()) return setMsg('Enter your roll number.');
-    if (!f.pin.trim()) return setMsg('Enter your registration PIN.');
+    if (method === 'pin' && !f.pin.trim()) return setMsg('Enter your registration PIN.');
+    if (method === 'code' && !classCode.trim()) return setMsg('Enter your class code.');
     if (f.password.length < 6) return setMsg('Password must be at least 6 characters.');
     if (f.password !== f.confirmPassword) return setMsg('Passwords do not match.');
     setBusy(true); setMsg('');
     try {
-      await api('/students/register', { method: 'POST', body: f });
+      await api('/students/register', { method: 'POST', body: method === 'code' ? { ...f, pin: '', classCode } : f });
       navigate(loginHref, { state: { msg: 'Registration successful. Please log in using your roll number and password.' } });
     } catch (err) { setMsg(err.message); setBusy(false); }
   };
@@ -35,15 +38,18 @@ export default function StudentRegister() {
         <Alert>{msg}</Alert>
         <label className="field" htmlFor="sr-name">Full name</label>
         <input id="sr-name" type="text" placeholder="Your name" value={f.name} onChange={set('name')} autoComplete="name" />
+        <div className="row" style={{ margin: '2px 0 10px', flexWrap: 'wrap' }}>
+          <label className="chk" style={{ margin: 0 }}><input type="radio" name="registrationMethod" checked={method === 'pin'} onChange={() => setMethod('pin')} />Registration PIN</label>
+          <label className="chk" style={{ margin: 0 }}><input type="radio" name="registrationMethod" checked={method === 'code'} onChange={() => setMethod('code')} />Shared class code</label>
+        </div>
         <div className="grid cols-2 tight">
           <div>
             <label className="field" htmlFor="sr-roll">Roll number</label>
             <input id="sr-roll" type="text" placeholder="e.g. 2024-CSE-001" value={f.rollNumber} onChange={set('rollNumber')} autoComplete="username" autoCapitalize="characters" />
           </div>
-          <div>
-            <label className="field" htmlFor="sr-pin">Registration PIN</label>
-            <input id="sr-pin" type="text" placeholder="From your teacher" value={f.pin} onChange={set('pin')} autoComplete="one-time-code" autoCapitalize="characters" />
-          </div>
+          {method === 'pin'
+            ? <div><label className="field" htmlFor="sr-pin">Registration PIN</label><input id="sr-pin" type="text" placeholder="From your teacher" value={f.pin} onChange={set('pin')} autoComplete="one-time-code" autoCapitalize="characters" /></div>
+            : <div><label className="field" htmlFor="sr-class-code">Class code</label><input id="sr-class-code" type="text" placeholder="From your teacher" value={classCode} onChange={e => setClassCode(e.target.value.toUpperCase())} autoCapitalize="characters" /></div>}
         </div>
         <label className="field" htmlFor="sr-pass">Create password</label>
         <PasswordField id="sr-pass" placeholder="At least 6 characters" value={f.password} onChange={set('password')} autoComplete="new-password" />

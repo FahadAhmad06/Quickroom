@@ -15,6 +15,7 @@ const nav = [
     ]
   },
   { to: '/admin/students', label: 'Students', icon: 'students' },
+  { to: '/admin/classes', label: 'Classes', icon: 'students' },
   { to: '/admin/teachers', label: 'Teachers', icon: 'shield', owner: true },
   { to: '/admin/rolls', label: 'Roll & PIN Management', icon: 'key' },
   { to: '/admin/results', label: 'Reports', icon: 'chart' },

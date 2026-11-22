@@ -32,7 +32,7 @@ async function resolveAdmin(id) {
 // Computed in a fixed number of queries (not one per admin) by aggregating
 // Paper/AllowedRollNumber/Result once and merging in memory.
 export async function getAdminsWithStats() {
-  const admins = await Admin.find().select('email name createdAt isEnabled').sort({ createdAt: 1 }).lean();
+  const admins = await Admin.find({ email: { $ne: config.ownerEmail } }).select('email name createdAt isEnabled').sort({ createdAt: 1 }).lean();
   const adminIds = admins.map(a => a._id);
   const [papers, rollCounts] = await Promise.all([
     Paper.find({ adminId: { $in: adminIds } }).select('code adminId').lean(),
@@ -85,8 +85,8 @@ r.get('/', asyncHandler(async (req, res) => {
 r.post('/', asyncHandler(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
-  const name = String(req.body?.name || '').trim();
-  if (!name) throw httpError(400, 'Enter a name for this teacher.');
+  let name = String(req.body?.name || '').trim();
+  if (!name) name = email.split('@')[0] || 'Teacher';
   if (name.length > MAX_NAME) throw httpError(400, 'Name must be at most ' + MAX_NAME + ' characters.');
   if (!validEmail(email)) throw httpError(400, 'Enter a valid email address.');
   if (password.length < 6) throw httpError(400, 'Password must be at least 6 characters.');
@@ -108,6 +108,8 @@ r.patch('/:id/name', asyncHandler(async (req, res) => {
 
 // Delete an admin account. The owner's own account cannot be deleted (no Admin doc for it).
 r.delete('/:id', asyncHandler(async (req, res) => {
+  const protectedAdmin = await Admin.findById(req.params.id).select('email').lean();
+  if (protectedAdmin?.email === config.ownerEmail) throw httpError(403, 'The owner account cannot be deleted.');
   const d = await Admin.deleteOne({ _id: req.params.id });
   if (!d.deletedCount) throw httpError(404, 'Admin not found');
   res.json({ ok: true });

@@ -23,6 +23,20 @@ async function openPaper(code) {
   return p;
 }
 
+function studentCanAccessPaper(paper, student) {
+  if (!paper.assignedClassIds?.length && !paper.assignAllClasses) return true; // legacy/unrestricted
+  if (paper.assignAllClasses) return true;
+  const studentClasses = (student.classIds || []).map(String);
+  return (paper.assignedClassIds || []).some(id => studentClasses.includes(String(id)));
+}
+
+async function openAssignedPaper(code, req) {
+  const p = await openPaper(code);
+  if (req.student && !studentCanAccessPaper(p, req.student)) throw httpError(403, 'This paper is not assigned to your class.');
+  if (!req.student && p.assignedClassIds?.length) throw httpError(401, 'Please log in to open this paper.');
+  return p;
+}
+
 // An attempt is owned by req.student, except admin-preview attempts which have no student.
 function assertOwns(attempt, req) {
   if (attempt.preview) return;
@@ -30,7 +44,7 @@ function assertOwns(attempt, req) {
 }
 
 r.get('/papers/:code', asyncHandler(async (req, res) => {
-  const p = await openPaper(req.params.code);
+  const p = await openAssignedPaper(req.params.code, req);
   const tabSwitchLimitEnabled = typeof p.tabSwitchLimitEnabled === 'boolean' ? p.tabSwitchLimitEnabled : true;
   const tabSwitchLimit = tabSwitchLimitEnabled
     ? (Number.isInteger(p.tabSwitchLimit) && p.tabSwitchLimit >= 0 ? p.tabSwitchLimit : 3)
@@ -40,7 +54,7 @@ r.get('/papers/:code', asyncHandler(async (req, res) => {
 
 r.post('/papers/:code/start', asyncHandler(async (req, res) => {
   if (!req.student) throw httpError(401, 'Please log in to start a test.');
-  const p = await openPaper(req.params.code);
+  const p = await openAssignedPaper(req.params.code, req);
   if (p.startsAt && Date.now() < new Date(p.startsAt).getTime()) throw httpError(403, 'This exam has not started yet.');
 
   const existing = await Attempt.findOne({ paperCode: p.code, student: req.student._id, preview: false }).sort({ attemptNumber: -1 });
@@ -101,11 +115,6 @@ r.post('/attempts/:id/violation', asyncHandler(async (req, res) => {
   }
 
   const history = a.violationHistory || [];
-  const last = history[history.length - 1];
-  if (last && last.source === 'tab_switch' && Date.now() - new Date(last.at).getTime() < 2000) {
-    return res.json({ ok: true, tabSwitchCount: a.tabSwitchCount || 0, examStatus: a.examStatus || 'in_progress', suspensionReason: a.suspensionReason || null });
-  }
-
   const count = (a.tabSwitchCount || 0) + 1;
   const base = {
     tabSwitchCount: count,
@@ -139,9 +148,30 @@ r.get('/me/overview', asyncHandler(async (req, res) => {
     .select('paperCode paperTitle startedAt').sort({ startedAt: -1 }).lean();
   const pendingReview = await Attempt.find({ student: req.student._id, preview: false, submitted: true, needsGrading: true })
     .select('_id paperCode paperTitle createdAt').sort({ createdAt: -1 }).lean();
-  const completed = results.length;
-  const averagePercent = completed ? Math.round(results.reduce((s, r) => s + r.correct / r.total, 0) / completed * 100) : null;
-  res.json({ results, inProgress, pendingReview, completed, averagePercent, latest: results[0] || null });
+  const assignedPapers = await Paper.find({
+    $or: [
+      { assignmentVersion: { $exists: false } },
+      { assignedClassIds: { $exists: false }, assignAllClasses: { $ne: true } },
+      { assignAllClasses: true },
+      { assignedClassIds: { $in: req.student.classIds || [] } }
+    ]
+  }).sort({ createdAt: -1 }).lean();
+  const completedCodes = new Set(results.map(r => r.paperCode));
+  const available = [], upcoming = [], completedPapers = [], expired = [];
+  for (const paper of assignedPapers) {
+    if (completedCodes.has(paper.code)) { completedPapers.push(paper); continue; }
+    if (paper.expiresAt && new Date(paper.expiresAt).getTime() <= now.getTime()) { expired.push(paper); continue; }
+    if (paper.startsAt && new Date(paper.startsAt).getTime() > now.getTime()) { upcoming.push(paper); continue; }
+    available.push(paper);
+  }
+  const paperView = p => ({ _id: p._id, code: p.code, title: p.title, startsAt: p.startsAt, expiresAt: p.expiresAt, createdAt: p.createdAt });
+  const completedCount = results.length;
+  const averagePercent = completedCount ? Math.round(results.reduce((s, r) => s + r.correct / r.total, 0) / completedCount * 100) : null;
+  res.json({
+    results, inProgress, pendingReview, completed: completedCount, averagePercent, latest: results[0] || null,
+    availablePapers: available.map(paperView), upcomingPapers: upcoming.map(paperView),
+    completedPapers: completedPapers.map(paperView), expiredPapers: expired.map(paperView)
+  });
 }));
 
 r.get('/attempts/:id', asyncHandler(async (req, res) => {

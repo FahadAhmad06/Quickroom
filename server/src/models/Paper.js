@@ -24,6 +24,10 @@ const schema = new mongoose.Schema({
   createdBy: String,                            // legacy email string; kept for display
   // adminId: the Admin._id that owns this paper. Null for legacy papers created before multi-admin
   // support; the super-admin can see/manage all papers regardless of this field.
-  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null, index: true }
+  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null, index: true },
+  assignedClassIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ClassRoom', default: [] }],
+  assignAllClasses: { type: Boolean, default: false },
+  // Empty assignedClassIds and assignAllClasses=false means a legacy/unrestricted paper.
+  assignmentVersion: { type: Number, default: 1 }
 }, { timestamps: true });
 export default mongoose.model('Paper', schema);

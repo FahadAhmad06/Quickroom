@@ -10,6 +10,7 @@ import EmptyState from '../../components/EmptyState';
 import Icon from '../../components/Icon';
 import { useConfirm, useToast } from '../../components/Feedback';
 import api from '../../utils/api';
+import { downloadCsvGeneric } from '../../utils/downloadCsv';
 
 function status(a) {
   if (!a.isEnabled) return <span className="badge bad"><Icon name="lock" />Disabled</span>;
@@ -36,10 +37,11 @@ function RollTable({ rolls, busy, onRegenerate, onToggle, onRemove }) {
     </div>
     {!rows.length ? <EmptyState icon="key">{rolls.length ? 'No roll numbers match your filters.' : 'No roll numbers yet. Authorize one above.'}</EmptyState> : (<>
       <div className="wrapx"><table>
-        <thead><tr><th>Roll number</th><th>Status</th><th>Registered student</th><th>Added</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Roll number</th><th>Class name</th><th>Status</th><th>Registered student</th><th>Added</th><th>Actions</th></tr></thead>
         <tbody>{pg.rows.map(a => (
           <tr key={a._id}>
             <td><b>{a.rollNumber}</b></td>
+            <td>{a.className || <span className="muted">Legacy / No class</span>}</td>
             <td>{status(a)}</td>
             <td>{a.registeredStudent?.name || <span className="muted">—</span>}</td>
             <td className="muted small-text">{new Date(a.createdAt).toLocaleDateString()}</td>
@@ -58,8 +60,9 @@ function RollTable({ rolls, busy, onRegenerate, onToggle, onRemove }) {
 
 export default function Rolls() {
   const state = useFetch('/admin/rolls'), toast = useToast(), confirm = useConfirm();
-  const [one, setOne] = useState({ rollNumber: '', pin: '' });
-  const [bulk, setBulk] = useState('');
+  const classesState = useFetch('/admin/classes');
+  const [one, setOne] = useState({ rollNumber: '', pin: '', classId: '' });
+  const [bulk, setBulk] = useState(''), [bulkClassId, setBulkClassId] = useState('');
   const [reveal, setReveal] = useState(null); // { rollNumber, pin } | { created: [...] }
   const [busy, setBusy] = useState(false);
 
@@ -72,9 +75,13 @@ export default function Rolls() {
 
   const add = () => {
     if (one.pin.trim() && one.pin.trim().length < 6) return toast.bad('PIN must be at least 6 characters.');
-    act(() => api('/admin/rolls', { method: 'POST', body: one }), r => 'Roll number ' + r.rollNumber + ' authorized.', r => { setReveal(r); setOne({ rollNumber: '', pin: '' }); });
+    if (!one.classId) return toast.bad('Select a class.');
+    act(() => api('/admin/rolls', { method: 'POST', body: one }), r => 'Roll number ' + r.rollNumber + ' authorized.', r => { setReveal(r); setOne({ rollNumber: '', pin: '', classId: one.classId }); });
   };
-  const addBulk = () => act(() => api('/admin/rolls/bulk', { method: 'POST', body: { rollNumbers: bulk } }), r => r.created.length + ' added' + (r.skipped.length ? ', ' + r.skipped.length + ' skipped' : '') + '.', r => { setReveal(r); setBulk(''); });
+  const addBulk = () => {
+    if (!bulkClassId) return toast.bad('Select a class.');
+    act(() => api('/admin/rolls/bulk', { method: 'POST', body: { rollNumbers: bulk, classId: bulkClassId } }), r => r.created.length + ' added' + (r.skipped.length ? ', ' + r.skipped.length + ' skipped' : '') + '.', r => { setReveal(r); setBulk(''); });
+  };
   const regenerate = async a => (await confirm({ title: 'Regenerate PIN?', message: 'The old PIN for ' + a.rollNumber + ' will stop working immediately.', confirmText: 'Regenerate' }))
     && act(() => api('/admin/rolls/' + a._id + '/regenerate', { method: 'POST' }), 'New PIN generated.', setReveal);
   const toggle = a => act(() => api('/admin/rolls/' + a._id + '/' + (a.isEnabled ? 'disable' : 'enable'), { method: 'POST' }), a.rollNumber + (a.isEnabled ? ' disabled.' : ' enabled.'));
@@ -84,9 +91,18 @@ export default function Rolls() {
       : { title: 'Remove roll number?', message: 'Remove ' + a.rollNumber + ' from the allowed list?', confirmText: 'Remove', danger: true });
     if (ok) act(() => api('/admin/rolls/' + a._id, { method: 'DELETE' }), a.isRegistered ? 'Student deleted.' : 'Roll number removed.');
   };
+  const exportPins = () => {
+    const rolls = state.data || [];
+    downloadCsvGeneric('registration-pins', ['Roll Number', 'Student Name', 'Class Name', 'PIN', 'Status'], rolls.map(a => [
+      a.rollNumber, a.registeredStudent?.name || '', a.className || '', '', statusKey(a) === 'registered' ? 'Registered' : statusKey(a) === 'available' ? 'Available' : 'Disabled'
+    ]));
+    toast.ok('Excel-compatible PIN export downloaded.');
+  };
 
   return (<>
-    <PageHeader title="Roll & PIN Management" subtitle="Only authorized roll numbers with a valid one-time PIN can register." />
+    <PageHeader title="Roll & PIN Management" subtitle="Only authorized roll numbers with a valid one-time PIN can register.">
+      <button className="ghost" onClick={exportPins} disabled={!state.data?.length}><Icon name="download" size={14} />Export Excel CSV</button>
+    </PageHeader>
     {reveal && (
       <div className="card elevated" style={{ borderColor: 'var(--warn-line)' }}>
         <div className="card-head">
@@ -103,14 +119,22 @@ export default function Rolls() {
     <div className="grid cols-2" style={{ marginBottom: 16 }}>
       <div className="card" style={{ margin: 0 }}>
         <div className="card-head"><h2><span className="hicon"><Icon name="plus" size={16} /></span>Authorize a roll number</h2></div>
+        <select aria-label="Class" value={one.classId} onChange={e => setOne({ ...one, classId: e.target.value })}>
+          <option value="">Select class (required)</option>
+          {(classesState.data || []).filter(c => c.canRegister).map(c => <option key={c._id} value={c._id}>{c.name} ({c.remainingSeats} seats)</option>)}
+        </select>
         <input type="text" placeholder="Roll number" value={one.rollNumber} onChange={e => setOne({ ...one, rollNumber: e.target.value })} aria-label="Roll number" />
         <input type="text" placeholder="PIN (leave blank to generate one)" value={one.pin} onChange={e => setOne({ ...one, pin: e.target.value })} aria-label="PIN" autoComplete="off" />
         <button onClick={add} disabled={busy || !one.rollNumber.trim()}>Add roll number</button>
       </div>
       <div className="card" style={{ margin: 0 }}>
         <div className="card-head"><h2><span className="hicon"><Icon name="students" size={16} /></span>Bulk add</h2></div>
+        <select aria-label="Bulk class" value={bulkClassId} onChange={e => setBulkClassId(e.target.value)}>
+          <option value="">Select class (required)</option>
+          {(classesState.data || []).filter(c => c.canRegister).map(c => <option key={c._id} value={c._id}>{c.name} ({c.remainingSeats} seats)</option>)}
+        </select>
         <textarea placeholder={'One roll number per line (or comma-separated)\nROLL001\nROLL002'} value={bulk} onChange={e => setBulk(e.target.value)} aria-label="Roll numbers to add" />
-        <button onClick={addBulk} disabled={busy || !bulk.trim()}>Bulk add with generated PINs</button>
+        <button onClick={addBulk} disabled={busy || !bulk.trim() || !bulkClassId}>Bulk add with generated PINs</button>
       </div>
     </div>
     <div className="card">

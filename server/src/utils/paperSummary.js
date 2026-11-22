@@ -25,6 +25,9 @@ export default function paperSummary(p, submissions = 0) {
     shuffleOptions: !!(p.shuffleOptions ?? false),
     shuffle: !!(p.shuffleQuestions ?? p.shuffle ?? false) || !!(p.shuffleOptions ?? false),
     startsAt: p.startsAt, expiresAt: p.expiresAt,
+    assignedClassIds: (p.assignedClassIds || []).map(id => String(id)),
+    assignAllClasses: p.assignAllClasses === true,
+    assignmentVersion: p.assignmentVersion || 1,
     createdAt: p.createdAt, questionCount: p.questions.length, totalMarks: totalMarks(p.questions), submissions,
     open: isOpen(p), status: paperStatus(p)
   };

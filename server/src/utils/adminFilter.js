@@ -16,11 +16,13 @@ export function ownerFilter(req) {
 }
 
 /**
- * Returns the admin's ObjectId, or null for super-admin.
+ * Returns the verified admin's ObjectId, including the protected owner identity.
  * Use this when setting adminId on newly created resources.
  */
 export function adminObjectId(req) {
-  if (req.admin.isSuper) return null; // super has no Admin doc
+  if (!req.admin.adminId || !mongoose.Types.ObjectId.isValid(req.admin.adminId)) {
+    throw Object.assign(new Error('The authenticated admin identity is missing.'), { status: 401 });
+  }
   return new mongoose.Types.ObjectId(req.admin.adminId);
 }
 

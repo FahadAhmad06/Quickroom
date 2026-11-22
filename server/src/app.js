@@ -13,6 +13,7 @@ import adminPaperRoutes from './routes/adminPaperRoutes.js';
 import adminResultRoutes from './routes/adminResultRoutes.js';
 import adminAdminRoutes from './routes/adminAdminRoutes.js';
 import adminRollRoutes from './routes/adminRollRoutes.js';
+import adminClassRoutes from './routes/adminClassRoutes.js';
 import adminRetakeRoutes from './routes/adminRetakeRoutes.js';
 import adminSubjectiveRoutes from './routes/adminSubjectiveRoutes.js';
 import studentAuthRoutes from './routes/studentAuthRoutes.js';
@@ -32,7 +33,7 @@ app.use('/api/admin/teachers', requireAdmin, teacherAuthRoutes);           // te
 app.use('/api/admin/admins', requireAdmin, requireOwner, adminAdminRoutes); // owner only
 app.use('/api/admin/reports', requireAdmin, adminReportRouter);           // admin PDF reports
 app.use('/api/admin/admins-reports', requireAdmin, requireOwner, ownerReportRouter); // owner PDF reports
-app.use('/api/admin', requireAdmin, adminPaperRoutes, adminResultRoutes, adminRollRoutes, adminRetakeRoutes, adminSubjectiveRoutes); // every other admin route
+app.use('/api/admin', requireAdmin, adminPaperRoutes, adminResultRoutes, adminRollRoutes, adminClassRoutes, adminRetakeRoutes, adminSubjectiveRoutes); // every other admin route
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // In production, serve the built React app from the same server.
